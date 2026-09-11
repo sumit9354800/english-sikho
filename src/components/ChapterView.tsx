@@ -1,6 +1,14 @@
 import React, { useState } from 'react';
 import { Chapter } from '../types';
-import { playNativeAudio, stopAudio, createSpeechRecognizer } from '../utils/audio';
+import {
+  playNativeAudio,
+  stopAudio,
+  createSpeechRecognizer,
+  getAudioRate,
+  setAudioRate,
+  getPreferredAccent,
+  setPreferredAccent,
+} from '../utils/audio';
 import {
   Volume2,
   VolumeX,
@@ -72,15 +80,69 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
   // Recall test reveal states
   const [revealedRecall, setRevealedRecall] = useState<Record<number, boolean>>({});
 
+  // Audio speech rate & accent preferences
+  const [audioRate, setAudioRateState] = useState<number>(() => getAudioRate());
+  const [audioAccent, setAudioAccentState] = useState<'us' | 'uk' | 'in' | 'default'>(() => getPreferredAccent());
+
+  const handleSpeedChange = (newRate: number) => {
+    setAudioRate(newRate);
+    setAudioRateState(newRate);
+    if (playingAudioText) {
+      stopAudio();
+      setPlayingAudioText(null);
+    }
+  };
+
+  const handleAccentChange = (newAccent: 'us' | 'uk' | 'in' | 'default') => {
+    setPreferredAccent(newAccent);
+    setAudioAccentState(newAccent);
+    if (playingAudioText) {
+      stopAudio();
+      setPlayingAudioText(null);
+    }
+  };
+
   const handlePlayAudio = async (text: string) => {
+    if (!text) return;
     if (playingAudioText === text) {
       stopAudio();
       setPlayingAudioText(null);
       return;
     }
     setPlayingAudioText(text);
-    await playNativeAudio(text);
-    setPlayingAudioText(null);
+    try {
+      await playNativeAudio(text, audioRate);
+    } catch (e) {
+      console.warn('Audio playback caught error:', e);
+    } finally {
+      setPlayingAudioText(null);
+    }
+  };
+
+  const renderAudioButton = (
+    text: string,
+    title = 'Listen to native pronunciation',
+    className = 'p-2 rounded-lg'
+  ) => {
+    const isPlaying = playingAudioText === text;
+    return (
+      <button
+        onClick={() => handlePlayAudio(text)}
+        className={`transition-all duration-200 cursor-pointer no-print flex items-center justify-center ${
+          isPlaying
+            ? 'bg-amber-500 text-slate-950 font-bold shadow-md ring-2 ring-amber-400 animate-pulse'
+            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-950 border border-slate-200'
+        } ${className}`}
+        title={isPlaying ? 'Click to stop audio' : title}
+        aria-label={isPlaying ? 'Stop audio' : title}
+      >
+        {isPlaying ? (
+          <VolumeX className="w-4 h-4 text-slate-950" />
+        ) : (
+          <Volume2 className="w-4 h-4 text-slate-600 group-hover:text-slate-900" />
+        )}
+      </button>
+    );
   };
 
   const handleStartSpeaking = () => {
@@ -344,11 +406,83 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
           <span className="text-xs text-slate-400 font-medium">10 Core Sentences</span>
         </div>
 
+        {/* Audio Speech Controls & Pronunciation Bar */}
+        <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-300/60 flex flex-wrap items-center justify-between gap-3 text-xs no-print shadow-2xs">
+          <div className="flex items-center gap-2 text-slate-800 font-semibold">
+            <Volume2 className="w-4 h-4 text-amber-700" />
+            <span>Audio Speaker Controls:</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Speed selection */}
+            <div className="flex items-center gap-1 bg-white/90 border border-amber-200 rounded-lg p-0.5 shadow-2xs">
+              <span className="text-[11px] font-medium text-slate-500 px-1.5">Speed:</span>
+              {[
+                { label: '0.8x Slow', val: 0.8 },
+                { label: '1.0x Normal', val: 1.0 },
+                { label: '1.2x Fluent', val: 1.2 },
+              ].map((s) => (
+                <button
+                  key={s.val}
+                  onClick={() => handleSpeedChange(s.val)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer ${
+                    audioRate === s.val
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Accent selection */}
+            <div className="flex items-center gap-1 bg-white/90 border border-amber-200 rounded-lg p-0.5 shadow-2xs">
+              <span className="text-[11px] font-medium text-slate-500 px-1.5">Voice Accent:</span>
+              {[
+                { label: '🇺🇸 US', val: 'us' as const },
+                { label: '🇬🇧 UK', val: 'uk' as const },
+                { label: '🇮🇳 IN', val: 'in' as const },
+              ].map((a) => (
+                <button
+                  key={a.val}
+                  onClick={() => handleAccentChange(a.val)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer ${
+                    audioAccent === a.val
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100'
+                  }`}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Active playback stopper */}
+            {playingAudioText && (
+              <button
+                onClick={() => {
+                  stopAudio();
+                  setPlayingAudioText(null);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] shadow-xs animate-pulse cursor-pointer"
+              >
+                <VolumeX className="w-3.5 h-3.5" />
+                <span>Stop Audio</span>
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {chapter.basicExamples.map((ex, idx) => (
             <div
               key={idx}
-              className="p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 transition flex items-start justify-between gap-3 shadow-2xs group"
+              className={`p-4 rounded-xl bg-white border transition flex items-start justify-between gap-3 shadow-2xs group ${
+                playingAudioText === (ex.audioText || ex.text)
+                  ? 'border-amber-400 bg-amber-50/30 ring-2 ring-amber-300'
+                  : 'border-slate-200 hover:border-slate-300'
+              }`}
             >
               <div className="space-y-1">
                 <span className="text-[11px] font-mono text-slate-400 font-bold block">
@@ -360,21 +494,7 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
                 <p className="text-xs text-slate-500">{ex.context}</p>
               </div>
 
-              <button
-                onClick={() => handlePlayAudio(ex.audioText || ex.text)}
-                className={`p-2 rounded-lg transition no-print ${
-                  playingAudioText === (ex.audioText || ex.text)
-                    ? 'bg-amber-100 text-amber-700'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                }`}
-                title="Listen to native pronunciation"
-              >
-                {playingAudioText === (ex.audioText || ex.text) ? (
-                  <VolumeX className="w-4 h-4" />
-                ) : (
-                  <Volume2 className="w-4 h-4" />
-                )}
-              </button>
+              {renderAudioButton(ex.audioText || ex.text, 'Listen to sentence')}
             </div>
           ))}
         </div>
@@ -396,7 +516,11 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
           {chapter.realLifeExamples.map((ex, idx) => (
             <div
               key={idx}
-              className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-start justify-between gap-4"
+              className={`p-4 rounded-xl bg-slate-50 border transition flex items-start justify-between gap-4 ${
+                playingAudioText === ex.text
+                  ? 'border-amber-400 bg-amber-50/40 ring-2 ring-amber-300'
+                  : 'border-slate-200'
+              }`}
             >
               <div className="space-y-1">
                 <div className="text-xs font-semibold text-amber-800 bg-amber-100/60 px-2 py-0.5 rounded inline-block">
@@ -406,13 +530,7 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
                 <p className="text-xs text-slate-500">Context: {ex.context}</p>
               </div>
 
-              <button
-                onClick={() => handlePlayAudio(ex.text)}
-                className="p-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition no-print flex-shrink-0"
-                title="Listen to audio"
-              >
-                <Volume2 className="w-4 h-4" />
-              </button>
+              {renderAudioButton(ex.text, 'Listen to dialogue', 'p-2 rounded-lg flex-shrink-0')}
             </div>
           ))}
         </div>
@@ -434,19 +552,17 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
           {chapter.professionalExamples.map((ex, idx) => (
             <div
               key={idx}
-              className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1.5"
+              className={`p-4 rounded-xl bg-white border transition shadow-2xs space-y-1.5 ${
+                playingAudioText === ex.text
+                  ? 'border-amber-400 bg-amber-50/30 ring-2 ring-amber-300'
+                  : 'border-slate-200'
+              }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
                   Tone: {ex.tone}
                 </span>
-                <button
-                  onClick={() => handlePlayAudio(ex.text)}
-                  className="p-1 text-slate-400 hover:text-slate-700 no-print"
-                  title="Play audio"
-                >
-                  <Volume2 className="w-3.5 h-3.5" />
-                </button>
+                {renderAudioButton(ex.text, 'Play workplace audio', 'p-1.5 rounded-md')}
               </div>
               <p className="text-sm font-semibold text-slate-900 leading-snug">"{ex.text}"</p>
               <p className="text-xs text-slate-500">When to use: {ex.context}</p>
@@ -477,18 +593,17 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
           {chapter.softwareEngineeringExamples.map((ex, idx) => (
             <div
               key={idx}
-              className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2"
+              className={`p-4 rounded-xl bg-slate-900 border transition space-y-2 ${
+                playingAudioText === ex.text
+                  ? 'border-emerald-400 bg-slate-900/90 ring-2 ring-emerald-500/50'
+                  : 'border-slate-800'
+              }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono text-emerald-400 font-medium">
                   {ex.devContext}
                 </span>
-                <button
-                  onClick={() => handlePlayAudio(ex.text)}
-                  className="p-1 text-slate-400 hover:text-white no-print"
-                >
-                  <Volume2 className="w-3.5 h-3.5" />
-                </button>
+                {renderAudioButton(ex.text, 'Listen to dev phrase', 'p-1.5 rounded-md')}
               </div>
               <p className="text-sm font-semibold text-slate-100 font-mono">"{ex.text}"</p>
               <div className="text-xs text-slate-400 pt-1 border-t border-slate-800/80 flex items-start gap-1.5">
@@ -583,18 +698,16 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
                 <p>{m.rootCause}</p>
               </div>
 
-              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-1">
+              <div className={`p-3 rounded-lg border transition space-y-1 ${
+                playingAudioText === m.naturalCorrection
+                  ? 'bg-emerald-100/90 border-emerald-400 ring-2 ring-emerald-300'
+                  : 'bg-emerald-50 border-emerald-200'
+              }`}>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-emerald-800">
                     ✅ Natural International English:
                   </span>
-                  <button
-                    onClick={() => handlePlayAudio(m.naturalCorrection)}
-                    className="p-1 text-emerald-700 hover:text-emerald-900 no-print"
-                    title="Hear native correction"
-                  >
-                    <Volume2 className="w-3.5 h-3.5" />
-                  </button>
+                  {renderAudioButton(m.naturalCorrection, 'Hear native correction', 'p-1.5 rounded-md')}
                 </div>
                 <p className="text-sm font-bold text-emerald-950 font-sans">
                   "{m.naturalCorrection}"
@@ -738,8 +851,15 @@ export const ChapterView: React.FC<ChapterViewProps> = ({
               </div>
 
               {showSampleAnswers[idx] && (
-                <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-950 space-y-1">
-                  <span className="font-bold block text-emerald-900">Native Example:</span>
+                <div className={`p-3 rounded-lg border transition text-xs space-y-1 ${
+                  playingAudioText === prompt.sampleAnswer
+                    ? 'bg-emerald-100/90 border-emerald-400 ring-2 ring-emerald-300'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold block text-emerald-900">Native Example:</span>
+                    {renderAudioButton(prompt.sampleAnswer, 'Hear native sample answer', 'p-1.5 rounded-md')}
+                  </div>
                   <p className="font-medium text-sm">"{prompt.sampleAnswer}"</p>
                 </div>
               )}
