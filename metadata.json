@@ -1,0 +1,6 @@
+{
+  "name": "The English Engine",
+  "description": "Complete English Mastery System: Basic to Advanced, Professional Communication, Technical Fluency, and Native Thinking",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
